@@ -17,7 +17,6 @@ export const postJob = async (req, res) => {
       company,
     } = req.body;
 
-    // Validate required fields
     const requiredFields = [
       title,
       description,
@@ -34,14 +33,10 @@ export const postJob = async (req, res) => {
       return sendError(res, 400, 'All fields are required');
     }
 
-    // Handle requirements - ensure it is an array
     const requirementsArray = Array.isArray(requirements)
       ? requirements
-      : requirements
-      ? requirements.split(',')
-      : [];
+      : requirements?.split(',') || [];
 
-    // Create and save the new job
     const job = await Job.create({
       title,
       description,
@@ -62,7 +57,6 @@ export const postJob = async (req, res) => {
   }
 };
 
-// Get jobs based on keyword search
 export const getJobs = async (req, res) => {
   try {
     const keyword = req.query.keyword || '';
@@ -87,10 +81,9 @@ export const getJobs = async (req, res) => {
   }
 };
 
-// Get a job by its ID
 export const getJobById = async (req, res) => {
   try {
-    const job = await Job.findById(req.params.id).populate('company').sort({ createdAt: -1 });
+    const job = await Job.findById(req.params.id).populate('applications').sort({ createdAt: -1 });
 
     if (!job) {
       return sendError(res, 404, 'Job not found');
@@ -102,7 +95,6 @@ export const getJobById = async (req, res) => {
   }
 };
 
-// Get jobs posted by the authenticated admin
 export const getAdminJobs = async (req, res) => {
   try {
     const jobs = await Job.find({ postedBy: req.id }).populate('company').sort({ createdAt: -1 });

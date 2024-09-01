@@ -2,6 +2,9 @@ import { sendError, sendResponse } from '../../utils/responseHandler.js';
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import validator from 'validator';
+import cloudinary from '../../utils/cloudinary.js';
+import getDataUri from '../../utils/datauri.js';
 import { User } from '../models/user.model.js';
 
 export const register = async (req, res) => {
@@ -12,6 +15,14 @@ export const register = async (req, res) => {
       return sendError(res, 400, 'All fields are required');
     }
 
+    const file = req.file;
+    const fileUri = getDataUri(file);
+    const cloudResponse = await cloudinary.uploader.upload(fileUri.content);
+
+    if (!validator.isEmail(email)) {
+      return sendError(res, 400, 'Invalid email format');
+    }
+
     const userExists = await User.findOne({ email });
     if (userExists) {
       return sendError(res, 400, 'User already exists');
@@ -19,7 +30,14 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await User.create({ fullname, email, phone, password: hashedPassword, role });
+    await User.create({
+      fullname,
+      email,
+      phone,
+      password: hashedPassword,
+      role,
+      'profile.profilePhoto': cloudResponse.secure_url,
+    });
 
     return sendResponse(res, 201, true, 'Account created successfully.');
   } catch (error) {
@@ -33,6 +51,10 @@ export const login = async (req, res) => {
 
     if (!email || !password || !role) {
       return sendError(res, 400, 'All fields are required');
+    }
+
+    if (!validator.isEmail(email)) {
+      return sendError(res, 400, 'Invalid email format');
     }
 
     const user = await User.findOne({ email }).select('+password');
@@ -70,6 +92,22 @@ export const logout = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { fullname, email, phone, bio, skills } = req.body;
+
+    const file = req.file;
+
+    if (!validator.isEmail(email)) {
+      return sendError(res, 400, 'Invalid email format');
+    }
+
+    const fileUri = getDataUri(file);
+    let cloudResponse;
+    try {
+      cloudResponse = await cloudinary.uploader.upload(fileUri.content);
+    } catch (error) {
+      console.error('Error uploading file to Cloudinary:', error);
+      return sendError(res, 500, 'An error occurred while uploading the file');
+    }
+
     const userId = req.id;
 
     const user = await User.findByIdAndUpdate(
@@ -80,6 +118,8 @@ export const updateProfile = async (req, res) => {
         ...(phone && { phone }),
         ...(bio && { 'profile.bio': bio }),
         ...(skills && { 'profile.skills': skills.split(',') }),
+        ...(file && { 'profile.resume': cloudResponse.secure_url }), // Save resume url
+        ...(file && { 'profile.resumeOriginalName': file.originalname }), // Save Original resume name
       },
       { new: true, select: '-password -__v' },
     );
@@ -90,6 +130,7 @@ export const updateProfile = async (req, res) => {
 
     return sendResponse(res, 200, true, 'Profile updated successfully', { user });
   } catch (error) {
+    console.error('Error updating profile:', error);
     return sendError(res, 500, error.message);
   }
 };
